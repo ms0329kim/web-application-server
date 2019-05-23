@@ -1,5 +1,6 @@
 package webserver;
 
+import db.DataBase;
 import model.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,25 +58,40 @@ public class RequestHandler extends Thread {
 								createUser(params);
 								response302Header(dos);
 							}
-						} else if ("POST".equals(type)) {
-							if (tokens[0].contains("Content-Length")) {
-								contentLength = Integer.parseInt(tokens[1]);
-							}
 						}
 					}
+				}
+
+				if (tokens[0].contains("Content-Length")) {
+					contentLength = Integer.parseInt(tokens[1]);
 				}
 
 				line = buffer.readLine();
 			}
 
+			String loginYn = null;
 			if (contentLength > 0) {
-				createUser(IOUtils.readData(buffer, contentLength));
-				response302Header(dos);
+
+				if (url.contains("/user/create")) {
+					createUser(IOUtils.readData(buffer, contentLength));
+					response302Header(dos);
+				} else if (url.contains("/user/login")) {
+					User user = findUser(IOUtils.readData(buffer, contentLength));
+
+					if (user == null) {
+						requestPath = "/login_failed.html";
+						loginYn = "logined=false";
+					} else {
+						requestPath = "/index.html";
+						loginYn = "logined=true";
+					}
+				}
+
 			}
 
 			byte[] body = Files.readAllBytes(new File("./webapp" + requestPath).toPath());
-			response200Header(dos, body.length);
-			responseBody(dos, body);
+			response200Header(dos, body.length, loginYn);
+ 			responseBody(dos, body);
 		} catch (IOException e) {
 			log.error(e.getMessage());
 		}
@@ -92,9 +108,25 @@ public class RequestHandler extends Thread {
 		}
 	}
 
+	private void response200Header(DataOutputStream dos, int lengthOfBodyContent, String cookieYn) {
+		try {
+			dos.writeBytes("HTTP/1.1 200 OK \r\n");
+			dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
+			dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+
+			if (cookieYn != null) {
+				dos.writeBytes("Cookie: " + cookieYn + "\r\n");
+			}
+
+			dos.writeBytes("\r\n");
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+	}
+
 	private void response302Header(DataOutputStream dos) {
 		try {
-			dos.writeBytes("HTTP/1.1 302 Round \r\n");
+			dos.writeBytes("HTTP/1.1 302 Found \r\n");
 			dos.writeBytes("Location: /index.html");
 			dos.writeBytes("\r\n");
 		} catch (IOException e) {
@@ -111,9 +143,14 @@ public class RequestHandler extends Thread {
 		}
 	}
 
+	private User findUser(String params) {
+		Map<String, String> map = HttpRequestUtils.parseQueryString(params);
+		return DataBase.findUserById(map.get("userId"));
+	}
+
 	private void createUser(String params) {
 		Map<String, String> map = HttpRequestUtils.parseQueryString(params);
 		User user = new User(map.get("userId"), map.get("password"), map.get("name"), map.get("email"));
-		System.out.println(user.toString());
+		DataBase.addUser(user);
 	}
 }
