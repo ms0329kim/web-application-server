@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import util.HttpRequestUtils;
 import util.IOUtils;
 
+import java.awt.print.Pageable;
 import java.io.*;
 import java.net.Socket;
 import java.nio.file.Files;
@@ -31,6 +32,7 @@ public class RequestHandler extends Thread {
 			DataOutputStream dos = new DataOutputStream(out);
 			String line = buffer.readLine();
 			int count = 0, contentLength = 0;
+			boolean acceptYn = false;
 
 			while (!"".equals(line)) {
 				if (line == null) {
@@ -41,6 +43,11 @@ public class RequestHandler extends Thread {
 				if (count++ == 0) {
 					type = tokens[0];
 					url = tokens[1];
+
+					if (url.contains(".css") || url.contains(".js")) {
+						acceptYn = true;
+						requestPath = url;
+					}
 				}
 
 				if (url.contains("html")) {
@@ -59,6 +66,16 @@ public class RequestHandler extends Thread {
 								response302Header(dos);
 							}
 						}
+					} else if (url.contains("list")) {
+						if (tokens[0].contains("Cookie")) {
+							Map<String, String> map = HttpRequestUtils.parseQueryString(tokens[1]);
+
+							if (!Boolean.parseBoolean(map.get("logined"))) {
+								requestPath = "/user/login.html";
+							} else {
+								requestPath = "/user/list.html";
+							}
+						}
 					}
 				}
 
@@ -72,17 +89,17 @@ public class RequestHandler extends Thread {
 			String loginYn = null;
 			if (contentLength > 0) {
 
-				if (url.contains("/user/create")) {
+				if (url.contains("create")) {
 					createUser(IOUtils.readData(buffer, contentLength));
 					response302Header(dos);
-				} else if (url.contains("/user/login")) {
+				} else if (url.contains("login")) {
 					User user = findUser(IOUtils.readData(buffer, contentLength));
 
 					if (user == null) {
 						requestPath = "/login_failed.html";
 						loginYn = "logined=false";
 					} else {
-						requestPath = "/index.html";
+						requestPath = "/";
 						loginYn = "logined=true";
 					}
 				}
@@ -90,7 +107,7 @@ public class RequestHandler extends Thread {
 			}
 
 			byte[] body = Files.readAllBytes(new File("./webapp" + requestPath).toPath());
-			response200Header(dos, body.length, loginYn);
+			response200Header(dos, body.length, loginYn, acceptYn);
  			responseBody(dos, body);
 		} catch (IOException e) {
 			log.error(e.getMessage());
@@ -108,15 +125,22 @@ public class RequestHandler extends Thread {
 		}
 	}
 
-	private void response200Header(DataOutputStream dos, int lengthOfBodyContent, String cookieYn) {
+	private void response200Header(DataOutputStream dos, int lengthOfBodyContent, String cookieYn, Boolean acceptYn) {
 		try {
 			dos.writeBytes("HTTP/1.1 200 OK \r\n");
-			dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
+
+			if (acceptYn) {
+				dos.writeBytes("Content-Type: text/css\r\n");
+			} else {
+				dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
+			}
+
 			dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
 
 			if (cookieYn != null) {
 				dos.writeBytes("Cookie: " + cookieYn + "\r\n");
 			}
+
 
 			dos.writeBytes("\r\n");
 		} catch (IOException e) {
