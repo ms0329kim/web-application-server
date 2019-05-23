@@ -27,6 +27,7 @@ public class RequestHandler extends Thread {
 		try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
 			String url = null, requestPath = null, type = null;
 			BufferedReader buffer = new BufferedReader(new InputStreamReader(in, "UTF-8"));
+			DataOutputStream dos = new DataOutputStream(out);
 			String line = buffer.readLine();
 			int count = 0, contentLength = 0;
 
@@ -54,7 +55,7 @@ public class RequestHandler extends Thread {
 							if (index > -1) {
 								String params = url.substring(index+1);
 								createUser(params);
-								requestPath = "/index.html";
+								response302Header(dos);
 							}
 						} else if ("POST".equals(type)) {
 							if (tokens[0].contains("Content-Length")) {
@@ -69,9 +70,9 @@ public class RequestHandler extends Thread {
 
 			if (contentLength > 0) {
 				createUser(IOUtils.readData(buffer, contentLength));
+				response302Header(dos);
 			}
 
-			DataOutputStream dos = new DataOutputStream(out);
 			byte[] body = Files.readAllBytes(new File("./webapp" + requestPath).toPath());
 			response200Header(dos, body.length);
 			responseBody(dos, body);
@@ -85,6 +86,16 @@ public class RequestHandler extends Thread {
 			dos.writeBytes("HTTP/1.1 200 OK \r\n");
 			dos.writeBytes("Content-Type: text/html;charset=utf-8\r\n");
 			dos.writeBytes("Content-Length: " + lengthOfBodyContent + "\r\n");
+			dos.writeBytes("\r\n");
+		} catch (IOException e) {
+			log.error(e.getMessage());
+		}
+	}
+
+	private void response302Header(DataOutputStream dos) {
+		try {
+			dos.writeBytes("HTTP/1.1 302 Round \r\n");
+			dos.writeBytes("Location: /index.html");
 			dos.writeBytes("\r\n");
 		} catch (IOException e) {
 			log.error(e.getMessage());
