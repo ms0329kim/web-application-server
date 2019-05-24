@@ -17,40 +17,39 @@ public class HttpRequest {
 
 	private static final Logger log = LoggerFactory.getLogger(HttpRequest.class);
 
-	private Map<String, String> header = new HashMap<>();
-	private Map<String, String> parameter = new HashMap<>();
 	private RequestLine requestLine;
 
-	public HttpRequest(InputStream in) {
+	private HttpHeaders headers;
+
+	private RequestParams requestParams = new RequestParams();
+
+	public HttpRequest(InputStream is) {
 		try {
-			BufferedReader buffer = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-			String line = buffer.readLine();
-
-			if (line == null) {
-				return;
-			}
-
-			requestLine = new RequestLine(line);
-
-			line = buffer.readLine();
-			while (!line.equals("")) {
-				log.debug("header : {}", line);
-				String[] tokens = line.split(":");
-				header.put(tokens[0].trim(), tokens[1].trim());
-
-				line = buffer.readLine();
-			}
-
-			if ("POST".equals(getMethod())) {
-				String body = IOUtils.readData(buffer, Integer.parseInt(header.get("Content-Length")));
-				parameter = HttpRequestUtils.parseQueryString(body);
-			} else {
-				parameter = requestLine.getParameter();
-			}
-
+			BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+			requestLine = new RequestLine(createRequestLine(br));
+			requestParams.addQueryString(requestLine.getQueryString());
+			headers = processHeaders(br);
+			requestParams.addBody(IOUtils.readData(br, headers.getContentLength()));
 		} catch (IOException e) {
-			e.printStackTrace();
+			log.error(e.getMessage());
 		}
+	}
+
+	private String createRequestLine(BufferedReader br) throws IOException {
+		String line = br.readLine();
+		if (line == null) {
+			throw new IllegalStateException();
+		}
+		return line;
+	}
+
+	private HttpHeaders processHeaders(BufferedReader br) throws IOException {
+		HttpHeaders headers = new HttpHeaders();
+		String line;
+		while (!(line = br.readLine()).equals("")) {
+			headers.add(line);
+		}
+		return headers;
 	}
 
 
@@ -63,10 +62,10 @@ public class HttpRequest {
 	}
 
 	public String getHeader(String name) {
-		return header.get(name);
+		return headers.getHeader(name);
 	}
 
 	public String getParameter(String name) {
-		return parameter.get(name);
+		return requestParams.getParameter(name);
 	}
 }
